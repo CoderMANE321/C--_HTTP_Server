@@ -10,6 +10,46 @@
 #include <netdb.h>
 #include <fstream>
 #include <sstream>
+#include <vector>
+#include <zlib.h>
+
+std::string gzip_compression(const std::string& content) {
+    std::vector<char> buffer;
+    buffer.resize(compressBound(content.size()));
+
+    z_stream zs;
+    memset(&zs, 0, sizeof(zs));
+
+    if (deflateInit2(&zs, Z_BEST_COMPRESSION, Z_DEFLATED, 15 + 16, 8, Z_DEFAULT_STRATEGY) != Z_OK) {
+        throw(std::runtime_error("deflateInit2 failed while compressing."));
+    }
+
+    zs.next_in = (Bytef*)content.data();
+    zs.avail_in = content.size();
+
+    int ret;
+    do {
+        zs.next_out = (Bytef*)buffer.data() + zs.total_out;
+        zs.avail_out = buffer.size() - zs.total_out;
+
+        ret = deflate(&zs, Z_FINISH);
+
+        if (ret == Z_STREAM_ERROR) {
+            deflateEnd(&zs);
+            throw(std::runtime_error("deflate failed while compressing."));
+        }
+
+        if (zs.avail_out == 0) {
+            buffer.resize(buffer.size() * 2);
+        }
+    } while (ret != Z_STREAM_END);
+
+    std::string compressed(buffer.data(), zs.total_out);
+    deflateEnd(&zs);
+    return compressed;
+}
+
+
 
 void http_request(int client_fd, const std::string& dir) {
     char buf[1024];
@@ -75,11 +115,19 @@ void http_request(int client_fd, const std::string& dir) {
         size_t endOfG = request.find("\r\n", startOfG);
         std::string encoding = request.substr(startOfG, endOfG - startOfG);
         if (encoding.find("gzip") != std::string::npos) {
-            std::string response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Encoding: gzip\r\nContent-Length: " + std::to_string(str.length()) + "\r\n\r\n" + str;
+            std::string compressed_string;
+            try {
+                compressed_string = gzip_compression(str);
+            } catch (const std::exception& e) {
+                std::cerr << "Compression error: " << e.what() << std::endl;
+                close(client_fd);
+                return;
+            }
+            std::string response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Encoding: gzip\r\nContent-Length: " + std::to_string(compressed_string.length()) + "\r\n\r\n" + compressed_string;
             send(client_fd, response.c_str(), response.length(), 0);
-        } else{
-        std::string response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: " + std::to_string(str.length()) + "\r\n\r\n" + str;
-        send(client_fd, response.c_str(), response.length(), 0);
+        } else {
+            std::string response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: " + std::to_string(str.length()) + "\r\n\r\n" + str;
+            send(client_fd, response.c_str(), response.length(), 0);
         }
     } else {
         send(client_fd, error_message.c_str(), error_message.length(), 0);
