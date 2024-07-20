@@ -1,3 +1,6 @@
+/* basic HTTP server that handles multiple request through concurrent threads
+has ablity to handle basic GET and POST from files */
+
 #include <iostream>
 #include <cstdlib>
 #include <string>
@@ -13,6 +16,7 @@
 #include <vector>
 #include <zlib.h>
 
+// compresses content
 std::string gzip_compression(const std::string& content) {
     std::vector<char> buffer;
     buffer.resize(compressBound(content.size()));
@@ -50,7 +54,7 @@ std::string gzip_compression(const std::string& content) {
 }
 
 
-
+//handles request for file GET and POST, reads echos , GET , and regular requests
 void http_request(int client_fd, const std::string& dir) {
     char buf[1024];
     int bytes_received = recv(client_fd, buf, sizeof(buf) - 1, 0);
@@ -136,6 +140,7 @@ void http_request(int client_fd, const std::string& dir) {
     close(client_fd);
 }
 
+// starts server and client
 int main(int argc, char **argv) {
     std::cout << std::unitbuf;
     std::cerr << std::unitbuf;
