@@ -36,8 +36,6 @@ void http_request(int client_fd, const std::string& dir) {
         size_t end = request.find(" ", start) + 65;
         std::string content = request.substr(start, end - start);
         std::ofstream ofs(dir + fileName, std::ios::binary);
-        std::cout << fileName + "\n";
-        std::cout << content;
         if (ofs.good()) {
             ofs << content;
             ofs.close();
@@ -73,9 +71,16 @@ void http_request(int client_fd, const std::string& dir) {
         size_t start = request.find("/echo/") + 6;
         size_t end = request.find(" HTTP/1.1");
         std::string str = request.substr(start, end - start);
+        size_t startOfG = request.find("Accept-Encoding:") + 17;
+        size_t endOfG = request.find("\r\n", startOfG);
+        std::string encoding = request.substr(startOfG, endOfG - startOfG);
+        if (encoding.find("gzip") != std::string::npos) {
+            std::string response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Encoding: gzip\r\nContent-Length: " + std::to_string(str.length()) + "\r\n\r\n" + str;
+            send(client_fd, response.c_str(), response.length(), 0);
+        } else{
         std::string response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: " + std::to_string(str.length()) + "\r\n\r\n" + str;
-        std::cout << str;
         send(client_fd, response.c_str(), response.length(), 0);
+        }
     } else {
         send(client_fd, error_message.c_str(), error_message.length(), 0);
     }
